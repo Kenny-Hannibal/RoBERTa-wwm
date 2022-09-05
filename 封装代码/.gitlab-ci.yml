@@ -1,0 +1,62 @@
+stages:
+  - unit_test
+  - build_image
+  - api_test
+  - deploy_beta
+
+variables:
+  PROJECT_REPO_NAME: api-segment
+
+before_script:
+  - export ROOT_PATH=$(pwd)
+  - echo 'root path:' $ROOT_PATH
+  - docker login -u $DOCKER_USER -p $DOCKER_PWD http://xxxx.dockerhub.com
+  - git config --global advice.detachedHead false
+  - git config --global user.email "${GITLAB_USER_EMAIL}" && git config --global user.name "${GITLAB_USER_NAME}"
+  - git clone --single-branch -b $CI_COMMIT_REF_NAME http://$GITLAB_USER:$GITLAB_PWD@gitlab.xxxxx.com/$PROJECT_REPO_NAME.git
+  - cd $PROJECT_REPO_NAME
+  - git checkout $CI_COMMIT_SHA
+  - echo 'commit id:' $CI_COMMIT_SHA
+  - echo 'commit user:' $GITLAB_USER_NAME
+  - echo 'commit e-mail:' $GITLAB_USER_EMAIL
+  - export COMMIT_MESSAGE=$(git log -p -1 --pretty=format:"%s"|head -1)
+  - echo 'commit message:' $COMMIT_MESSAGE
+  - export DATE=$(git log --pretty=format:"%cd %H" --date=format:'%Y%m%d' | grep ${CI_COMMIT_SHA} | awk '{print $1}')
+  - echo 'date:' $DATE
+  - export IMAGE_TAG=$DATE"_"${CI_COMMIT_SHA:0:8}
+  - echo 'docker image tag:' $IMAGE_TAG
+
+unit_test_stage:
+  stage: unit_test
+  script:
+    - sh tests/unit_tests/env/run_unit_tests.sh
+  artifacts:
+    when: always
+    name: "${PROJECT_REPO_NAME}_${CI_COMMIT_SHA:0:8}"
+    expire_in: 1 week
+    paths:
+      - TestReport.html
+  when: manual
+  allow_failure: false
+
+build_image_stage:
+  stage: build_image
+  script:
+    - sh docker/build.sh $IMAGE_TAG
+  when: manual
+  allow_failure: false
+
+api_test_stage:
+  stage: api_test
+  script:
+    - sh tests/api_tests/env/run_api_tests.sh $IMAGE_TAG
+  allow_failure: false
+
+deploy_beta_stage:
+  stage: deploy_beta
+  script:
+    - xxx  # 对接k8s集群
+  when: manual
+  allow_failure: false
+  only:
+    - master
